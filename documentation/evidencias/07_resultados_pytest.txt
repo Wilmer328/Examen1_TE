@@ -1,0 +1,39 @@
+﻿============================= test session starts =============================
+platform win32 -- Python 3.14.7, pytest-9.2.0, pluggy-1.7.0 -- C:\Users\wilme\OneDrive\Escritorio\Tecnologias Emergentes\Examen_PrimerParcial_TE\.venv\Scripts\python.exe
+rootdir: C:\Users\wilme\OneDrive\Escritorio\Tecnologias Emergentes\Examen_PrimerParcial_TE
+plugins: anyio-4.16.0
+collecting ... collected 31 items
+
+tests/test_api_bi.py::test_requires_authentication PASSED                [  3%]
+tests/test_api_bi.py::test_wrong_password_rejected PASSED                [  6%]
+tests/test_api_bi.py::test_kpis_match_independent_sql PASSED             [  9%]
+tests/test_api_bi.py::test_combined_filters_match_independent_sql PASSED [ 12%]
+tests/test_api_bi.py::test_breakdown_totals_not_duplicated_by_joins PASSED [ 16%]
+tests/test_api_bi.py::test_period_without_data_returns_zero PASSED       [ 19%]
+tests/test_api_bi.py::test_invalid_inputs_rejected PASSED                [ 22%]
+tests/test_api_bi.py::test_detail_pagination PASSED                      [ 25%]
+tests/test_api_bi.py::test_freshness_and_no_credentials_exposed PASSED   [ 29%]
+tests/test_api_bi.py::test_admin_endpoints_forbidden_for_analyst PASSED  [ 32%]
+tests/test_etl_pipeline.py::test_catalog_has_rules_and_keys PASSED       [ 35%]
+tests/test_etl_pipeline.py::test_incremental_is_idempotent PASSED        [ 38%]
+tests/test_etl_pipeline.py::test_controlled_failure_does_not_advance_watermark_and_recovers PASSED [ 41%]
+tests/test_etl_pipeline.py::test_reconciliation_between_layers PASSED    [ 45%]
+tests/test_etl_pipeline.py::test_no_duplicate_grain_and_no_unknown_members PASSED [ 48%]
+tests/test_etl_pipeline.py::test_fact_total_matches_source_minus_quarantine PASSED [ 51%]
+tests/test_etl_pipeline.py::test_scd2_single_current_version_and_non_overlapping PASSED [ 54%]
+tests/test_etl_pipeline.py::test_quarantine_and_derivation_rules_applied PASSED [ 58%]
+tests/test_ml_alerts_genai.py::test_features_use_only_past_information PASSED [ 61%]
+tests/test_ml_alerts_genai.py::test_temporal_split_has_no_overlap PASSED [ 64%]
+tests/test_ml_alerts_genai.py::test_active_model_registered_with_baseline_comparison PASSED [ 67%]
+tests/test_ml_alerts_genai.py::test_drop_rule_fires_when_drop_exceeds_threshold PASSED [ 70%]
+tests/test_ml_alerts_genai.py::test_drop_rule_does_not_fire_at_or_below_threshold PASSED [ 74%]
+tests/test_ml_alerts_genai.py::test_ml_rule_fires_only_below_ratio PASSED [ 77%]
+tests/test_ml_alerts_genai.py::test_alert_deduplication PASSED           [ 80%]
+tests/test_ml_alerts_genai.py::test_alerts_have_web_and_email_delivery_records PASSED [ 83%]
+tests/test_ml_alerts_genai.py::test_assistant_rejects_tools_outside_whitelist PASSED [ 87%]
+tests/test_ml_alerts_genai.py::test_assistant_tool_validates_parameters PASSED [ 90%]
+tests/test_ml_alerts_genai.py::test_assistant_tools_return_dw_data PASSED [ 93%]
+tests/test_ml_alerts_genai.py::test_assistant_input_limits PASSED        [ 96%]
+tests/test_ml_alerts_genai.py::test_assistant_without_key_returns_503 PASSED [100%]
+
+============================= 31 passed in 26.50s =============================
