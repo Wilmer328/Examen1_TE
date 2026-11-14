@@ -1,5 +1,9 @@
-# Secretos
+# Secretos (cualquier variante de .env; solo .env.example se versiona)
 .env
+.env.*
+!.env.example
+*.pem
+*.key
 # Entornos y dependencias
 .venv/
 __pycache__/
