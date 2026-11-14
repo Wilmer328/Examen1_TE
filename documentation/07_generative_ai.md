@@ -1,62 +1,109 @@
 # 7. Inteligencia Artificial Generativa: asistente analítico
 
 ## Caso de uso
-Asistente de lenguaje natural (pestaña *Asistente IA*) que responde preguntas sobre ventas, resume cambios entre períodos, explica indicadores, consulta pronósticos y alertas, y sugiere análisis adicionales. También redacta la **explicación de alertas de severidad alta** (marcada como generada por IA).
+Asistente de lenguaje natural (pestaña *Asistente IA*) que responde preguntas sobre ventas, compara períodos, explica indicadores, consulta pronósticos y alertas y sugiere análisis. También redacta la explicación de alertas de severidad alta (marcada como generada por IA).
+
+## Proveedores (intercambiables con `LLM_PROVIDER`)
+| Proveedor | Configuración | Ventajas | Limitaciones |
+|---|---|---|---|
+| **Ollama local (predeterminado)** | `LLM_PROVIDER=ollama`, `OLLAMA_MODEL=qwen2.5:1.5b` | Sin costo; **ningún dato sale del equipo**; ~1 GB de RAM | Modelo pequeño: errores de interpretación y de etiquetado (ver resultados); 15-60 s por respuesta en CPU |
+| Anthropic Claude (alternativa) | `LLM_PROVIDER=anthropic`, `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL=claude-opus-5-5` | Mayor calidad | Pago por uso; los agregados consultados se envían a la nube. **No se evaluó** en este proyecto (sin API key) |
+
+### Instalación de Ollama
+```powershell
+winget install Ollama.Ollama            # o https://ollama.com/download
+ollama pull qwen2.5:1.5b                # ~1 GB
+curl http://localhost:11434/api/tags    # debe listar qwen2.5:1.5b
+```
+Variables (`.env`): `OLLAMA_BASE_URL` (por defecto `http://localhost:11434`; en Docker `http://host.docker.internal:11434`), `OLLAMA_TOOL_MODE`, `OLLAMA_NUM_CTX`, `OLLAMA_NUM_PREDICT`, `OLLAMA_TIMEOUT`, `OLLAMA_KEEP_ALIVE`. Estado: `GET /api/assistant/status` → `{proveedor, modelo, configurado, detalle}`.
+
+### Límites de memoria y tiempo
+| Parámetro | Valor | Efecto |
+|---|---|---|
+| `OLLAMA_NUM_CTX` | 8 192 tokens | Tamaño de la caché KV en RAM (Ollama trunca en silencio si el contexto es menor que el prompt; por eso se fija explícitamente) |
+| `OLLAMA_NUM_PREDICT` | 768 (respuesta), 300 (planificación) | Máximo de tokens generados por llamada |
+| `ASSISTANT_TOOL_RESULT_MAX_CHARS` | 6 000 | Recorte de cada resultado de herramienta (se avisa al modelo y se marca `recortado` en la traza) |
+| `ASSISTANT_MAX_TURNS` | 5 | Máximo de pasos por pregunta |
+| `OLLAMA_TIMEOUT` | 300 s (conexión 5 s) | Si se supera, error claro (503), nunca respuesta simulada |
+| `OLLAMA_KEEP_ALIVE` | 5 min | El modelo se descarga de memoria tras 5 min sin uso |
+| `temperature` | 0 | Respuestas reproducibles |
 
 ## Arquitectura segura
 ```mermaid
 sequenceDiagram
     actor U as Usuario
-    participant W as Chat web (React)
     participant A as API FastAPI
-    participant C as Claude (Anthropic)
+    participant L as LLM (Ollama local / Claude)
+    participant R as run_tool() lista blanca
     participant S as common/analytics.py
     participant D as WWI_DW (vista aprobada)
-    U->>W: pregunta (≤ 500 caracteres)
-    W->>A: POST /api/assistant/ask + JWT
-    A->>A: valida token, rol, tamaño y límite 6/min por usuario
-    A->>C: pregunta + system prompt + 7 herramientas tipadas
-    loop hasta 8 turnos
-        C-->>A: tool_use (p. ej. obtener_kpis{fechas, filtros})
-        A->>S: herramienta de lista blanca, parámetros validados
-        S->>D: SELECT parametrizado sobre dw.vw_SalesAnalytics
-        D-->>S: agregados
-        S-->>A: JSON
-        A->>C: tool_result
-    end
-    C-->>A: respuesta con [DATO] / [PREDICCIÓN] / [INTERPRETACIÓN]
-    A->>D: ai.AssistantLog (usuario, pregunta, herramientas, estado, latencia, tokens)
-    A-->>W: respuesta + fuentes + fecha de datos + aviso
+    U->>A: POST /api/assistant/ask (JWT, ≤ 500 caracteres, 6/min)
+    A->>L: pregunta + catálogo generado desde TOOLS
+    L-->>A: herramienta + parámetros (JSON restringido por esquema)
+    A->>A: descarta filtros no mencionados en la pregunta
+    A->>R: run_tool(nombre, parámetros)
+    R->>R: valida nombre (7 permitidas), fechas, dimensiones, valores de filtro existentes
+    R->>S: consulta parametrizada
+    S->>D: SELECT … WHERE col = ?
+    D-->>A: agregados
+    A->>L: pregunta + RESULTADOS (recortados)
+    L-->>A: respuesta en lenguaje natural
+    A->>A: verificación de cifras + etiqueta [PREDICCIÓN] determinista
+    A->>D: ai.AssistantLog (proveedor:modelo, herramientas, estado, latencia, tokens)
+    A-->>U: respuesta + fuentes + verificación + fecha de datos
 ```
 
-**El modelo no tiene acceso irrestricto ni ejecuta SQL.** Solo puede pedir 7 herramientas: `estado_datos`, `obtener_kpis`, `ventas_por_dimension`, `tendencia`, `comparar_periodos`, `pronostico`, `alertas_recientes`. Cada una valida fechas, dimensiones (lista blanca) y tamaños antes de consultar con parámetros. Una herramienta inexistente o parámetros inválidos devuelven `is_error` al modelo (pruebas `test_assistant_rejects_tools_outside_whitelist`, `test_assistant_tool_validates_parameters`).
+**El modelo no ejecuta SQL ni accede libremente a la base.** Solo puede elegir una de 7 herramientas (`estado_datos`, `obtener_kpis`, `ventas_por_dimension`, `tendencia`, `comparar_periodos`, `pronostico`, `alertas_recientes`), definidas **una sola vez** en `TOOLS`. Del mismo origen se generan el formato de Claude, el formato nativo de Ollama (`ollama_tools()`) y el esquema JSON del planificador (`_planner_schema()`, enum con los 7 nombres + `ninguna`). Toda ejecución pasa por `run_tool()`.
 
-## Proveedor y configuración
-| Parámetro | Valor |
+### Modos de herramientas con Ollama (`OLLAMA_TOOL_MODE`)
+- **`json` (predeterminado):** el modelo devuelve `{"herramienta", "parametros"}` con **salida estructurada** (Ollama restringe la generación al esquema). Luego se ejecuta la herramienta y se pide la redacción con los resultados. Si `run_tool()` rechaza los parámetros, el error vuelve al modelo para que corrija (hasta 4 intentos; una llamada repetida se corta).
+- **`native`:** *tool calling* nativo de Ollama. En pruebas con `qwen2.5:1.5b` y las 7 herramientas, el modelo **no llamó herramientas en 11 de 12 intentos** (respondía pidiendo datos), por eso no es el modo predeterminado. Recomendado solo con modelos de 7B o más.
+
+### Controles añadidos para el modelo pequeño (deterministas, en el servidor)
+| Problema observado en pruebas | Control |
 |---|---|
-| SDK | `anthropic` 2.8.0 (Python oficial) |
-| Modelo | `claude-opus-5-5` (configurable con `ANTHROPIC_MODEL`) |
-| Esfuerzo | `output_config.effort = medium` (configurable); `low` para explicar alertas |
-| Fallback | `fallbacks: "default"` (beta `server-side-fallback-2026-07-01`): si el modelo rechaza por política, la API reintenta en un modelo alternativo; se registra el modelo que respondió |
-| Credencial | `ANTHROPIC_API_KEY` en `.env` (nunca en el repositorio). Sin credencial, la API responde 503 y el resto de la plataforma sigue funcionando |
+| Rellenaba filtros opcionales con ejemplos de las descripciones (“Plains”, “Clothing”) → respuesta sobre un subconjunto | En modo `json`, un filtro solo se aplica si su valor **aparece en la pregunta**; si no, se descarta y queda en la traza (`filtros_descartados`) |
+| Enviaba filtros inexistentes (“Nacional”, “Europe”) → KPIs en 0 | `run_tool()` trata valores genéricos (“todos”, “nacional”, “total”…) como “sin filtro” y **rechaza** valores que no existen en el DW, devolviendo la lista válida |
+| No interpretaba “último trimestre” | El servidor calcula el último trimestre y mes completos y los incluye en el prompt |
+| Etiquetaba pronósticos como [DATO] | Si se usó `pronostico`, el servidor agrega una nota fija `[PREDICCIÓN]` con la versión del modelo de ML |
+| Inventaba o mal-escalaba cifras | Verificación automática de cifras (abajo) |
+
+## Verificación automática de cifras (`generative_ai/verification.py`)
+Compara cada número de ≥ 4 dígitos de la respuesta con los números devueltos por las herramientas en esa conversación (admite redondeos por prefijo; ignora años). Resultado en `verificacion`: `verificada`, `cifras_no_verificadas` o `sin_respaldo` (hay cifras pero no se consultó el DW). Si hay advertencia, el estado pasa a `ok_con_advertencias` y se agrega al texto: “⚠ Verificación automática: …”.
+
+**No es infalible:** no revisa porcentajes ni números de menos de 4 dígitos; un error de escala que conserve los mismos dígitos iniciales pasa (caso real observado: “274.026.600 unidades” en lugar de 2.740.266); un cálculo correcto del modelo puede marcarse como no verificado; no valida afirmaciones cualitativas.
 
 ## Controles de calidad y seguridad (guía → implementación)
 | Requisito | Implementación |
 |---|---|
-| Restringir a datos autorizados | Herramientas de lista blanca sobre la vista aprobada; cuenta `api_user` de solo lectura |
-| Validar entradas y limitar tamaño/frecuencia | Pydantic (1–500 caracteres) + `RateLimiter` 6/min/usuario + máximo 8 turnos |
-| No enviar datos personales | Solo se envían agregados (montos, conteos, nombres de empresa ficticios). No se extraen correos, teléfonos ni fotos |
-| Mostrar fecha de actualización | Cada respuesta incluye `datos_actualizados` (última carga y rango) |
-| Distinguir hechos, predicciones e interpretaciones | Etiquetas obligatorias `[DATO]`, `[PREDICCIÓN]`, `[INTERPRETACIÓN]` resaltadas en la interfaz |
-| Respuestas con métricas y períodos | Regla 3 del system prompt; las fuentes (herramientas + parámetros) se muestran bajo cada respuesta |
-| Responder “no hay datos suficientes” | Regla 5 del system prompt; casos 9, 10 y 12 de la batería |
-| Registrar consultas | `ai.AssistantLog` (sin la respuesta completa; solo longitud, herramientas, estado, tokens, latencia) |
-| Probar ambiguas / fuera de alcance / sin datos | `generative_ai/eval_assistant.py` (12 preguntas) |
+| Restringir a datos autorizados | Lista blanca de 7 herramientas → vista aprobada `dw.vw_SalesAnalytics`; consultas parametrizadas |
+| Validar entradas y limitar tamaño/frecuencia | Pydantic (1–500 caracteres), 6 preguntas/min/usuario, máx. 5 pasos, parámetros validados en `run_tool()` |
+| No enviar datos personales a servicios externos | Con Ollama nada sale del equipo; con Claude solo agregados |
+| Mostrar fecha de actualización | `datos_actualizados` en cada respuesta |
+| Distinguir hechos, predicciones e interpretaciones | Etiquetas solicitadas al modelo + nota `[PREDICCIÓN]` determinista |
+| Respaldar con métricas y períodos | Traza de herramientas y parámetros en cada respuesta + verificación de cifras |
+| Responder “no hay datos suficientes” | Herramienta `ninguna` + instrucción explícita; casos 9, 10 y 12 de la batería |
+| Registrar consultas | `ai.AssistantLog` con `proveedor:modelo`, herramientas, estado, latencia, tokens y error (también las fallas) |
+| Proveedor caído | 503 con mensaje claro (“No se pudo conectar con Ollama…”, “ollama pull…”, “no respondió en N s”); nunca se simula una respuesta |
 
-## Pruebas del asistente
-`python -m generative_ai.eval_assistant` ejecuta 12 preguntas (incluye 1 ambigua, 1 fuera de alcance, 1 sin datos y 1 intento de inyección). Para cada una registra resultado esperado, herramientas de respaldo, respuesta obtenida y **cifras no verificadas** (números de la respuesta que no aparecen en los datos devueltos por las herramientas). Resultado: `evidencias/06_pruebas_asistente.md` (se genera al ejecutar con API key; consume créditos).
+## Pruebas
+- Automatizadas: `tests/test_ollama_integration.py` (Ollama simulado con `httpx.MockTransport` para ser deterministas; las herramientas sí consultan el DW real) + 1 prueba contra el Ollama real.
+- Batería de 12 preguntas contra el modelo real: `python -m generative_ai.eval_assistant` → [evidencias/06_pruebas_asistente.md](evidencias/06_pruebas_asistente.md).
+
+### Resultados de la batería (qwen2.5:1.5b, modo json)
+| Medición | Resultado |
+|---|---|
+| Criterio automático (herramienta adecuada + cifras presentes en los datos + valor de referencia SQL) | 10/12 |
+| **Revisión manual contra SQL independiente** | **5 correctas, 3 parciales, 4 fallidas** |
+| Casos sin datos / fuera de alcance / inyección (9, 10, 12) | 3/3 correctos |
+| Preguntas que ejecutaron SQL fuera de las herramientas | 0 |
+| Latencia por pregunta | 6 s a 127 s (media ≈ 27 s); en una corrida previa una pregunta tardó 258 s |
+
+Fallas típicas: período equivocado (“último trimestre” → año completo), signo mal interpretado (“disminución” cuando subió), comparación con el período equivocado y errores de escala/etiquetado. El detalle de cada respuesta y la revisión manual están en [evidencias/06_pruebas_asistente.md](evidencias/06_pruebas_asistente.md). **Conclusión honesta:** la integración, las restricciones de seguridad y el manejo de errores funcionan; la *calidad analítica* de `qwen2.5:1.5b` es insuficiente para usar sus respuestas sin revisar las fuentes. Un modelo local de 7B o Claude deberían mejorarla (no medido).
 
 ## Límites
-- La calidad depende del proveedor externo y de la disponibilidad de la API.
-- “Último trimestre” se interpreta como el último período con datos (2016), no el calendario actual; el asistente lo explicita.
-- La verificación automática de cifras es heurística (redondeos pueden dar falsos positivos que se revisan manualmente).
+- `qwen2.5:1.5b` es un modelo pequeño: elige mal herramientas o períodos en preguntas compuestas y comete errores de etiquetado/escala. Las salvaguardas impiden que acceda a datos no autorizados, pero **no garantizan** respuestas correctas; el usuario debe revisar las fuentes mostradas.
+- Latencia de 7 s a más de 4 min por pregunta en CPU.
+- La explicación de alertas con Ollama usa el mismo modelo y tiene la misma calidad limitada.
+- La pantalla del asistente muestra el proveedor y modelo activos y, si no está disponible, el detalle real enviado por `/api/assistant/status` (p. ej. “No se pudo conectar con Ollama…”).
+- La explicación de alertas con Ollama está implementada pero **no se ejecutó contra el modelo real**; la alternativa con Claude no se probó en vivo (sin API key).

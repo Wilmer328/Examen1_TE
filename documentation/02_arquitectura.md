@@ -26,7 +26,7 @@ flowchart LR
         API[FastAPI<br/>JWT, SQL parametrizado]
         SVC[common/analytics.py<br/>servicio analítico]
         MOD[ML Ridge<br/>scikit-learn]
-        LLM[Claude API<br/>herramientas limitadas]
+        LLM[LLM intercambiable<br/>Ollama local qwen2.5:1.5b<br/>o Claude API<br/>7 herramientas limitadas]
         ALR[Motor de alertas]
     end
     WEB[React + ECharts<br/>dashboard]
@@ -55,7 +55,7 @@ flowchart LR
 | Backend | FastAPI | Tipado, validación, OpenAPI automática en `/docs`, mismo lenguaje que ETL/ML | .NET, Node |
 | Frontend | React 18 + Vite + Apache ECharts | Recomendado; ECharts permite drill-down por clic | Angular, Chart.js |
 | ML | scikit-learn (Ridge / HistGradientBoosting) | Suficiente para 1 602 observaciones; interpretable | XGBoost, Prophet |
-| IA generativa | **Claude (API de Anthropic)**, modelo `claude-opus-5-5` con *tool use* | Herramientas tipadas → el modelo nunca escribe SQL; buena calidad en español | OpenAI, Ollama local (requiere ≥ 8 GB extra de RAM; el equipo tiene 7,7 GB) |
+| IA generativa | **Ollama local** con `qwen2.5:1.5b` (predeterminado, `LLM_PROVIDER=ollama`); **Claude** (`claude-opus-5-5`) como alternativa | Ollama: sin costo, ningún dato sale del equipo y el modelo de 1,5B (~1 GB, contexto limitado a 8 192 tokens) cabe en un equipo de 7,7 GB de RAM. Claude: mejor calidad, pago por uso. En ambos el modelo solo pide herramientas de una lista blanca; nunca escribe SQL | OpenAI (pago y datos fuera del equipo); modelos locales de 7B+ (no caben con holgura en 7,7 GB) |
 | Notificaciones | Web (tabla + WebSocket) y correo SMTP; sin SMTP → archivo `.eml` (entrega simulada) | Demostrable sin credenciales de correo | RabbitMQ (innecesario para el volumen) |
 | Despliegue | Local con scripts PowerShell; **Docker Compose** opcional (`deployment/docker-compose.yml`) | Docker Desktop no estaba instalado; requiere privilegios de administrador | — |
 
@@ -89,5 +89,6 @@ flowchart LR
 | Elemento | Costo |
 |---|---|
 | SQL Server Express, Python, React, scikit-learn, ECharts | Gratis |
-| API de Claude | Pago por uso (Opus 5.5: USD 4 / millón de tokens de entrada, USD 20 / millón de salida). Una pregunta típica usa 2-4 llamadas con ≈ 5-15 mil tokens → del orden de centavos de dólar. Alternativa gratuita: `ANTHROPIC_MODEL=claude-haiku-5-5` (más barato) o reemplazar por Ollama local con más RAM. |
+| IA generativa con Ollama (predeterminado) | Gratis; consume CPU/RAM local (~1-1,5 GB mientras el modelo está cargado; se libera tras `OLLAMA_KEEP_ALIVE=5m`) |
+| API de Claude (alternativa) | Pago por uso (Opus 5.5: USD 4 / millón de tokens de entrada, USD 20 / millón de salida); del orden de centavos por pregunta |
 | Correo | Gratis en modo outbox; un proveedor SMTP real puede tener costo |

@@ -1,6 +1,6 @@
 # 10. Plan y resultados de pruebas
 
-Ejecución: `python -m pytest -v tests` → **31 pruebas, 31 aprobadas** (salida completa: [evidencias/07_resultados_pytest.txt](evidencias/07_resultados_pytest.txt)). Requiere la base cargada; las pruebas de pipeline ejecutan cargas reales.
+Ejecución: `python -m pytest -v tests` → **47 pruebas, 47 aprobadas** (31 originales + 16 de integración con Ollama; salida completa: [evidencias/07_resultados_pytest.txt](evidencias/07_resultados_pytest.txt)). Requiere la base cargada; las pruebas de pipeline ejecutan cargas reales.
 
 ## Matriz (pruebas de la guía → evidencia)
 | Prueba de la guía | Qué se demuestra | Prueba automatizada / evidencia | Resultado |
@@ -16,7 +16,7 @@ Ejecución: `python -m pytest -v tests` → **31 pruebas, 31 aprobadas** (salida
 | Dashboard | KPIs = SQL independiente (sin filtros, filtros combinados, período vacío); totales no duplicados; paginación; validación de entradas | `test_api_bi.py` (10 pruebas) + [05_validacion_kpis](evidencias/05_validacion_kpis.md) | ✅ |
 | Seguridad API | 401 sin token / token falso / clave errónea; 403 analista en endpoint admin; sin credenciales en respuestas | `test_requires_authentication`, `test_wrong_password_rejected`, `test_admin_endpoints_forbidden_for_analyst`, `test_freshness_and_no_credentials_exposed` | ✅ |
 | ML | Sin leakage; división temporal sin solapes; baseline registrado; evaluación en prueba | `test_features_use_only_past_information`, `test_temporal_split_has_no_overlap`, `test_active_model_registered_with_baseline_comparison` | ✅ |
-| GenAI | Herramientas fuera de lista blanca rechazadas; parámetros inválidos rechazados; herramientas devuelven datos del DW; límite de tamaño; 503 sin credencial | 5 pruebas en `test_ml_alerts_genai.py` + batería de 12 preguntas `eval_assistant.py` (requiere API key) | ✅ / ⏳ batería pendiente de API key |
+| GenAI | Herramientas fuera de lista blanca rechazadas; parámetros inválidos rechazados; herramientas devuelven datos del DW; límite de tamaño; 503 sin credencial | 5 pruebas en `test_ml_alerts_genai.py` + 16 en `test_ollama_integration.py` (Ollama simulado y real: herramientas generadas desde la lista única, todo pasa por `run_tool`, herramienta inexistente rechazada, Ollama caído → 503, timeout, modelo no descargado, registro de fallas, verificación de cifras) + batería de 12 preguntas contra `qwen2.5:1.5b` real | ✅ integración y seguridad / ⚠️ calidad: 10/12 automático, **5 correctas · 3 parciales · 4 fallidas** en revisión manual ([06_pruebas_asistente](evidencias/06_pruebas_asistente.md)) |
 | Alertas | Disparo (> 15 %), no disparo (= 15 %), regla ML, deduplicación, registro de entrega web+correo | 5 pruebas en `test_ml_alerts_genai.py` + outbox | ✅ |
 | End-to-end | Fuente → staging → DW → API → dashboard → ML → alerta | Demo (guion en `12_guion_video_demo.md`) y ejecución de `etl.pipeline` con post-pasos | ✅ |
 

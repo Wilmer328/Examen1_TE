@@ -10,20 +10,30 @@ Solución de extremo a extremo: **WideWorldImporters (OLTP) → staging (raw / c
 | API | FastAPI + JWT | `backend/`, `common/analytics.py` |
 | Dashboard | React 18 + Vite + Apache ECharts | `frontend/` |
 | ML | scikit-learn (Ridge), división temporal, baselines | `machine_learning/` |
-| IA generativa | Claude (`claude-opus-5-5`) con herramientas analíticas limitadas | `generative_ai/` |
+| IA generativa | **Ollama local** (`qwen2.5:1.5b`, predeterminado) o Claude (`claude-opus-5-5`) con 7 herramientas analíticas limitadas | `generative_ai/` |
 | Alertas | Reglas + ML + explicación IA; web (WebSocket) y correo | `notifications/` |
-| Pruebas | pytest (31 pruebas) | `tests/` |
+| Pruebas | pytest (47 pruebas, incluye integración con Ollama) | `tests/` |
 | Despliegue | PowerShell; Docker Compose opcional | `deployment/` |
 
 ## Requisitos
 - Windows 10/11, **SQL Server Express** (instancia `.\SQLEXPRESS`) con `sqlcmd` y **ODBC Driver 18**
 - **Python 3.14**, **Node.js 20+**
-- (Opcional) API key de Anthropic para el asistente; (opcional) Docker Desktop
+- **Ollama** para el asistente de IA (ver abajo); alternativa: API key de Anthropic. (Opcional) Docker Desktop
+
+### Asistente de IA con Ollama (local, sin costo)
+```powershell
+winget install Ollama.Ollama          # o descargar desde https://ollama.com/download
+ollama pull qwen2.5:1.5b              # ~1 GB; el servicio queda escuchando en http://localhost:11434
+curl http://localhost:11434/api/tags  # comprobar que el modelo aparece
+```
+En `.env`: `LLM_PROVIDER=ollama`, `OLLAMA_MODEL=qwen2.5:1.5b` (valores por defecto). Para usar Claude en su lugar:
+`LLM_PROVIDER=anthropic` y `ANTHROPIC_API_KEY=...`. Estado del proveedor: `GET /api/assistant/status`.
+Con Ollama ningún dato sale del equipo. En CPU cada respuesta tarda ~15-60 s.
 
 ## Instalación rápida (≈ 3 minutos)
 ```powershell
 git clone <repo> ; cd <repo>
-copy .env.example .env        # complete JWT_SECRET, APP_USERS y ANTHROPIC_API_KEY
+copy .env.example .env        # complete JWT_SECRET y APP_USERS (y ANTHROPIC_API_KEY solo si usa Claude)
 powershell -ExecutionPolicy Bypass -File deployment\setup.ps1
 powershell -ExecutionPolicy Bypass -File deployment\start.ps1
 ```
@@ -55,7 +65,7 @@ cd frontend ; npm install ; npm run dev
 | Reintentar notificaciones | `python -m notifications.alerts --retry` |
 | Pruebas automatizadas | `python -m pytest -v tests` |
 | Regenerar evidencias | `python -m documentation.generar_evidencias` |
-| Batería del asistente (usa API) | `python -m generative_ai.eval_assistant` |
+| Batería de 12 preguntas del asistente (proveedor configurado) | `python -m generative_ai.eval_assistant` |
 | Reiniciar ambiente | `deployment\reset_environment.ps1` |
 
 ## Seguridad
@@ -94,5 +104,8 @@ Requiere `MSSQL_SA_PASSWORD`, `ETL_DB_PASSWORD` y `API_DB_PASSWORD` en `.env`. *
 |---|---|
 | `CREATE INDEX failed … QUOTED_IDENTIFIER` | Ejecute `sqlcmd` con `-I` |
 | `Data source name not found` | Instale *ODBC Driver 18 for SQL Server* o cambie `ODBC_DRIVER` en `.env` |
-| Asistente responde 503 | Falta `ANTHROPIC_API_KEY` en `.env`; reinicie el backend |
+| Asistente responde 503 “No se pudo conectar con Ollama” | Inicie Ollama (aplicación o `ollama serve`) y verifique `OLLAMA_BASE_URL` |
+| Asistente responde 503 “ollama pull …” | Descargue el modelo: `ollama pull qwen2.5:1.5b` |
+| Asistente responde 503 con proveedor anthropic | Falta `ANTHROPIC_API_KEY` en `.env`; reinicie el backend |
+| Asistente muy lento | Normal en CPU con modelos locales; reduzca `OLLAMA_NUM_CTX` o use preguntas más concretas |
 | El dashboard muestra 401 | Token expirado: vuelva a iniciar sesión |
