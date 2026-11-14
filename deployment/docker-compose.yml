@@ -44,6 +44,8 @@ services:
       SQL_SERVER: sqlserver,1433
       SQL_AUTH: sql
       SQL_TRUST_CERT: "yes"
+      # Ollama corre en el equipo anfitrión (fuera de Docker)
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
     depends_on: { sqlserver: { condition: service_healthy } }
     ports: ["8000:8000"]
     volumes: [models:/app/machine_learning/models, outbox:/app/notifications/outbox]
