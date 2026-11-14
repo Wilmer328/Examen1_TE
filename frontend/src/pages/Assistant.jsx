@@ -41,9 +41,14 @@ export default function Assistant() {
   return (
     <div className="page">
       <Card title="Asistente analítico (IA generativa)" actions={<Badge kind="ia">Respuestas generadas por IA</Badge>}>
-        {status.data && !status.data.configurado && <div className="status error">El asistente no está configurado: defina ANTHROPIC_API_KEY en el archivo .env del backend.</div>}
-        <p className="muted small">El asistente solo consulta el Data Warehouse mediante herramientas analíticas aprobadas (sin SQL libre). Cada respuesta indica las consultas usadas.
-          Modelo: {status.data?.modelo}.</p>
+        {status.data && !status.data.configurado && (
+          <div className="status error">
+            El asistente no está disponible ({status.data.proveedor}): {status.data.detalle || "revise la configuración del proveedor de IA en el .env del backend."}
+          </div>
+        )}
+        <p className="muted small">El asistente solo consulta el Data Warehouse mediante herramientas analíticas aprobadas (sin SQL libre). Cada respuesta indica las consultas usadas
+          y una verificación automática de cifras (heurística: revise siempre las fuentes).
+          Proveedor: {status.data?.proveedor ?? "—"} · Modelo: {status.data?.modelo ?? "—"}.</p>
         <div className="samples">{SAMPLES.map((s) => <button key={s} className="chip" onClick={() => ask(s)} disabled={busy}>{s}</button>)}</div>
         <div className="chat">
           {chat.map((m, i) => m.role === "user" ? <div key={i} className="msg user">{m.text}</div>
