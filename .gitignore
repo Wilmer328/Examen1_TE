@@ -1,0 +1,13 @@
+# Secretos
+.env
+# Entornos y dependencias
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+frontend/node_modules/
+frontend/dist/
+# Artefactos generados en ejecución
+etl/logs/*.log
+notifications/outbox/*.eml
+*.bak
