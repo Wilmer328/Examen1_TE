@@ -117,6 +117,10 @@ def test_assistant_input_limits(client, auth):
     assert r.status_code == 422
 
 
-@pytest.mark.skipif(assistant.is_configured(), reason="Con API key configurada el endpoint responde 200")
-def test_assistant_without_key_returns_503(client, auth):
-    assert client.post("/api/assistant/ask", json={"pregunta": "Ventas 2016"}, headers=auth).status_code == 503
+def test_assistant_without_key_returns_503(client, auth, monkeypatch):
+    # Proveedor Anthropic sin credencial: debe informar 503, nunca simular una respuesta
+    monkeypatch.setattr(config, "LLM_PROVIDER", "anthropic")
+    for var in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_PROFILE"):
+        monkeypatch.delenv(var, raising=False)
+    r = client.post("/api/assistant/ask", json={"pregunta": "Ventas 2016"}, headers=auth)
+    assert r.status_code == 503 and "ANTHROPIC_API_KEY" in r.json()["detail"]
