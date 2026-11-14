@@ -28,7 +28,7 @@ Objetivo: `y / media_13`; la predicción se reescala multiplicando por la media 
 |---|---|---|
 | Entrenamiento | ≤ 2015-07-05 | ajuste |
 | Validación | 2015-07-06 → 2016-01-03 | **selección** de algoritmo/hiperparámetros |
-| Prueba | 2016-01-04 → 2016-05-30 (198 filas por horizonte) | evaluación **única**, nunca usada para decidir |
+| Prueba | 2016-01-04 → 2016-05-30 (198 filas por horizonte) | evaluación **única**, nunca usada para decidir. **Incluye una semana con datos simulados** (ver “Efecto de la semana simulada”) |
 
 El escalado (`StandardScaler`) se ajusta dentro del `Pipeline` solo con los datos de entrenamiento.
 
@@ -55,11 +55,29 @@ El escalado (`StandardScaler`) se ajusta dentro del `Pipeline` solo con los dato
 | 4 semanas | 22 933 | 24 924 | 24,3 % | 19,7 % | **8,0 %** |
 Métricas completas: [evidencias/ml_metricas.json](evidencias/ml_metricas.json) y tabla `ml.ModelRegistry.MetricsJson`.
 
+### Efecto de la semana simulada (corrección)
+Una versión anterior de este documento afirmaba que los datos simulados no se usaron en la evaluación. **Eso era incorrecto.** El modelo se entrenó después de ejecutar `etl.simulate_source_changes`, que insertó operaciones **simuladas** del 2016-06-01 al 2016-06-07. La última semana del conjunto de prueba (2016-05-30 a 2016-06-05) es **mixta**: 2 días reales (30 y 31 de mayo) y 5 días simulados (copias de las facturas del mismo día de la semana 52 semanas antes).
+
+- **Qué filas afecta:** las 9 filas cuyo *objetivo* es la semana 2016-05-30 (una por territorio), es decir 9 de 198 filas de prueba por horizonte (4,5 %).
+- **Qué no afecta:** ninguna fila de prueba usa la semana simulada como **variable de entrada** (todas las semanas origen son anteriores a 2016-05-30). Entrenamiento y validación terminan antes y no contienen datos simulados.
+- **Impacto medido** (recalculado excluyendo la semana mixta, mismo modelo y mismos hiperparámetros):
+
+| Horizonte | MAE modelo con / sin semana mixta | MAE media móvil 4 con / sin | Mejora con / sin |
+|---|---|---|---|
+| 1 | 22 735 / 22 996 | 24 298 / 24 586 | 6,4 % / 6,5 % |
+| 2 | 22 932 / 23 214 | 25 239 / 25 543 | 9,1 % / 9,1 % |
+| 3 | 22 927 / 23 240 | 24 342 / 24 596 | 5,8 % / 5,5 % |
+| 4 | 22 933 / 23 216 | 24 924 / 25 232 | 8,0 % / 8,0 % |
+
+- **Validez:** sin la semana mixta el MAE del modelo sube ~1,1–1,4 % y la mejora relativa frente a la mejor línea base se mantiene en 5,5–9,1 %. La conclusión (mejora moderada y consistente sobre la media móvil) **no cambia**, pero las cifras de la tabla principal son ligeramente optimistas. Como los días simulados copian el año anterior, esa semana es más “predecible” que una real.
+- **Producción:** el re-entrenamiento final usa todos los datos etiquetados, incluida la semana mixta, y las predicciones actuales parten de la semana origen 2016-05-30; por lo tanto **los pronósticos vigentes dependen parcialmente de datos simulados**.
+- **Cómo eliminar el efecto:** restaurar la fuente original (`deployment\reset_environment.ps1`) y volver a entrenar antes de simular operaciones, o limitar el conjunto de prueba a semanas ≤ 2016-05-23.
+
 ## Interpretación y limitaciones (honestas)
 - El modelo supera a todas las líneas base en todos los horizontes, pero la mejora sobre la media móvil de 4 semanas es **moderada (6–9 %)**: las ventas semanales por territorio son ruidosas (WAPE ≈ 20 %). Es útil para tendencias y alertas, no para cifras exactas.
 - La estacionalidad anual aporta poco: solo hay ~3 años; la naive estacional es la peor línea base.
 - No incluye promociones, precios ni festivos (no existen en la fuente).
-- Las semanas posteriores a 2016-05-31 contienen datos **simulados** (copias del año anterior) y no se usaron en la evaluación.
+- Los días posteriores a 2016-05-31 contienen datos **simulados** (copias del año anterior). La última semana de prueba (2016-05-30) es mixta y **sí se usó en la evaluación**; su efecto es pequeño (MAE ~1 % menor) y está cuantificado en “Efecto de la semana simulada”.
 - Sesgo: territorios pequeños (*External*) tienen mayor error relativo.
 
 ## Operación del modelo
