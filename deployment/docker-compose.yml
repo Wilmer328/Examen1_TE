@@ -33,6 +33,8 @@ services:
     volumes:
       - sqldata:/var/opt/mssql
       - ../database:/scripts:ro
+      # Carpeta del host con WideWorldImporters-Standard.bak (la misma que usa deployment/setup.ps1)
+      - ${WWI_BACKUP_DIR:-C:/Users/Public/SQLBackups}:/backup:ro
     entrypoint: ["/bin/bash", "/scripts/docker-init.sh"]
 
   api:
