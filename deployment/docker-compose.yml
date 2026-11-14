@@ -1,0 +1,66 @@
+# Despliegue en contenedores (requiere Docker Desktop). Desde la raíz del repo:
+#   docker compose -f deployment/docker-compose.yml --env-file .env up -d --build
+#   docker compose -f deployment/docker-compose.yml --env-file .env run --rm init     # restaura WWI y crea Staging/DW
+#   docker compose -f deployment/docker-compose.yml --env-file .env run --rm etl      # carga inicial/incremental
+# Puertos: SQL Server 14330 (host) · API 8000 · Frontend 8080
+# Volúmenes: sqldata (bases), models (artefactos ML), outbox (correos simulados)
+name: wwi-data-platform
+
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?defina MSSQL_SA_PASSWORD en .env}
+      MSSQL_PID: Express
+    ports: ["14330:1433"]
+    volumes:
+      - sqldata:/var/opt/mssql
+      - ../database:/scripts:ro
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -C -Q 'SELECT 1' || exit 1"]
+      interval: 10s
+      retries: 12
+
+  init:   # tarea única: descarga el .bak, restaura la fuente, crea Staging/DW y cuentas técnicas
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    profiles: ["tools"]
+    depends_on: { sqlserver: { condition: service_healthy } }
+    environment:
+      SA: ${MSSQL_SA_PASSWORD}
+      ETL_PASSWORD: ${ETL_DB_PASSWORD}
+      API_PASSWORD: ${API_DB_PASSWORD}
+    volumes:
+      - sqldata:/var/opt/mssql
+      - ../database:/scripts:ro
+    entrypoint: ["/bin/bash", "/scripts/docker-init.sh"]
+
+  api:
+    build: { context: .., dockerfile: deployment/Dockerfile.python }
+    env_file: ../.env
+    environment:
+      SQL_SERVER: sqlserver,1433
+      SQL_AUTH: sql
+      SQL_TRUST_CERT: "yes"
+    depends_on: { sqlserver: { condition: service_healthy } }
+    ports: ["8000:8000"]
+    volumes: [models:/app/machine_learning/models, outbox:/app/notifications/outbox]
+
+  etl:    # ejecución bajo demanda o desde un cron externo
+    build: { context: .., dockerfile: deployment/Dockerfile.python }
+    profiles: ["tools"]
+    env_file: ../.env
+    environment: { SQL_SERVER: sqlserver,1433, SQL_AUTH: sql }
+    depends_on: { sqlserver: { condition: service_healthy } }
+    command: ["sh", "-c", "python -m etl.pipeline --triggered-by docker || true; ls machine_learning/models/*.joblib >/dev/null 2>&1 || (python -m machine_learning.train && python -m machine_learning.predict)"]
+    volumes: [models:/app/machine_learning/models, outbox:/app/notifications/outbox]
+
+  frontend:
+    build: { context: .., dockerfile: deployment/Dockerfile.frontend }
+    depends_on: [api]
+    ports: ["8080:8080"]
+
+volumes:
+  sqldata:
+  models:
+  outbox:
