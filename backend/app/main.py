@@ -168,7 +168,8 @@ def assistant_ask(q: Question, user: dict = Depends(security.current_user)):
     assistant_limiter.check(user["username"])
     try:
         return assistant.ask(q.pregunta, user["username"])
-    except assistant.AssistantNotConfigured as exc:
+    except (assistant.AssistantNotConfigured, assistant.AssistantUnavailable) as exc:
+        # Proveedor no configurado o no disponible: se informa el problema; nunca se simula una respuesta.
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)) from exc
     except anthropic.RateLimitError as exc:
         raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "El proveedor de IA limitó la tasa; reintente") from exc
@@ -179,7 +180,7 @@ def assistant_ask(q: Question, user: dict = Depends(security.current_user)):
 @app.get("/api/assistant/status", tags=["genai"])
 def assistant_status(_: dict = Depends(security.current_user)):
     from generative_ai import assistant
-    return {"configurado": assistant.is_configured(), "modelo": config.ANTHROPIC_MODEL}
+    return assistant.status()
 
 
 # ------------------------------------------------------------------ Alertas
