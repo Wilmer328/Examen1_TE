@@ -1,140 +1,190 @@
-# Plataforma Integral de Ingeniería de Datos y Analítica Inteligente — Wide World Importers
+# Plataforma de Datos y Analítica - Wide World Importers
 
-Solución de extremo a extremo: **WideWorldImporters (OLTP) → staging (raw / clean / quarantine / ready) → Data Warehouse en estrella → API + dashboard web → pronóstico ML → asistente con IA generativa (Ollama local o Claude) → alertas automáticas**, con auditoría, calidad, reconciliación y monitoreo.
+Proyecto del primer parcial de Tecnologías Emergentes.
 
-| Capa | Tecnología | Carpeta |
-|---|---|---|
-| Fuente | SQL Server 2025 Express · WideWorldImporters | `database/` |
-| ETL + orquestación | Python 3.14 + SQL (MERGE idempotente), Programador de tareas | `etl/` |
-| Staging / DW | `WWI_Staging`, `WWI_DW` (SQL Server) | `database/staging`, `database/data-warehouse` |
-| API | FastAPI + JWT | `backend/`, `common/analytics.py` |
-| Dashboard | React 18 + Vite + Apache ECharts | `frontend/` |
-| ML | scikit-learn (Ridge), división temporal, baselines | `machine_learning/` |
-| IA generativa | **Ollama local** (`qwen2.5:1.5b`, predeterminado) o Claude (`claude-opus-5-5`) con 7 herramientas analíticas limitadas | `generative_ai/` |
-| Alertas | Reglas + ML + explicación IA; web (WebSocket) y correo | `notifications/` |
-| Pruebas | pytest (47 pruebas, incluye integración con Ollama) | `tests/` |
-| Despliegue | PowerShell; Docker Compose opcional; demo pública: frontend en **Vercel** + backend local por túnel **ngrok** | `deployment/`, `frontend/vercel.json` |
+La idea del proyecto es tomar los datos de ventas de una empresa (usé la base de ejemplo WideWorldImporters de Microsoft) y llevarlos desde la base transaccional hasta algo útil para tomar decisiones: un dashboard, un pronóstico de ventas, un asistente al que se le pueden hacer preguntas y alertas cuando las ventas caen.
 
-## Requisitos
-- Windows 10/11, **SQL Server Express** (instancia `.\SQLEXPRESS`) con `sqlcmd` y **ODBC Driver 18**
-- **Python 3.14**, **Node.js 20+**
-- **Ollama** para el asistente de IA (ver abajo); alternativa: API key de Anthropic. (Opcional) Docker Desktop
+El flujo es este:
 
-### Asistente de IA con Ollama (local, sin costo)
-```powershell
-winget install Ollama.Ollama          # o descargar desde https://ollama.com/download
-ollama pull qwen2.5:1.5b              # ~1 GB; el servicio queda escuchando en http://localhost:11434
-curl http://localhost:11434/api/tags  # comprobar que el modelo aparece
+1. Un proceso ETL en Python saca los datos de SQL Server de forma incremental.
+2. Los datos pasan por un staging con cuatro zonas: `raw` (tal como llegan), `clean` (validados), `quarantine` (los que no pasan las reglas de calidad) y `ready` (listos para cargar).
+3. Se cargan en un Data Warehouse con modelo estrella.
+4. Una API en FastAPI expone los datos al dashboard hecho en React.
+5. Un modelo de Machine Learning pronostica las ventas semanales por territorio.
+6. Un asistente con IA generativa responde preguntas sobre los datos.
+7. Después de cada carga se revisan reglas de alerta y se notifica por la web y por correo.
+
+Demo en línea: https://examen.jsanchez.site (solo funciona cuando mi PC tiene el backend encendido, más abajo explico por qué).
+
+## Tecnologías
+
+- **Base de datos:** SQL Server 2025 Express (fuente, staging y Data Warehouse)
+- **ETL:** Python 3.14 y SQL
+- **API:** FastAPI con autenticación JWT
+- **Dashboard:** React 18, Vite y Apache ECharts
+- **Machine Learning:** scikit-learn
+- **IA generativa:** Ollama con el modelo `qwen2.5:1.5b` corriendo en local. También se puede usar Claude cambiando una variable.
+- **Pruebas:** pytest (47 pruebas)
+- **Publicación:** Vercel para el frontend y ngrok para exponer el backend
+
+## Estructura del repositorio
+
 ```
-En `.env`: `LLM_PROVIDER=ollama`, `OLLAMA_MODEL=qwen2.5:1.5b` (valores por defecto). Para usar Claude en su lugar:
-`LLM_PROVIDER=anthropic` y `ANTHROPIC_API_KEY=...`. Estado del proveedor: `GET /api/assistant/status`.
-Con Ollama ningún dato sale del equipo. En CPU cada respuesta tarda ~15-60 s.
+database/          scripts SQL (bases, staging, Data Warehouse, procedimientos, seguridad)
+etl/               extracción, transformación, carga y simulador de cambios
+common/            configuración, conexión y consultas analíticas compartidas
+backend/           API en FastAPI
+frontend/          dashboard en React
+machine_learning/  variables, entrenamiento y predicción
+generative_ai/     asistente y verificación de cifras
+notifications/     reglas de alerta y envío de notificaciones
+tests/             pruebas automatizadas
+deployment/        scripts para instalar, iniciar y programar el pipeline; Docker Compose
+documentation/     documentación del proyecto y evidencias
+```
 
-## Instalación rápida (≈ 3 minutos)
+## Qué se necesita
+
+- Windows 10 u 11
+- SQL Server Express (instancia `.\SQLEXPRESS`), `sqlcmd` y ODBC Driver 18
+- Python 3.14 y Node.js 20 o superior
+- Ollama para el asistente
+
+Para instalar Ollama y el modelo:
+
 ```powershell
-git clone <repo> ; cd <repo>
-copy .env.example .env        # complete JWT_SECRET y APP_USERS (y ANTHROPIC_API_KEY solo si usa Claude)
+winget install Ollama.Ollama
+ollama pull qwen2.5:1.5b
+```
+
+El modelo pesa alrededor de 1 GB. Corre en la CPU, así que cada respuesta tarda entre 10 segundos y un minuto, pero tiene la ventaja de que los datos no salen de la computadora y no tiene costo. Si se prefiere usar Claude, en el `.env` se pone `LLM_PROVIDER=anthropic` y la `ANTHROPIC_API_KEY`.
+
+## Instalación
+
+```powershell
+git clone https://github.com/Wilmer328/Examen1_TE.git
+cd Examen1_TE
+copy .env.example .env
+```
+
+En el `.env` hay que completar `JWT_SECRET` y los usuarios de `APP_USERS`. Después:
+
+```powershell
 powershell -ExecutionPolicy Bypass -File deployment\setup.ps1
-powershell -ExecutionPolicy Bypass -File deployment\start.ps1
 ```
-`setup.ps1` crea el entorno Python, instala el frontend, descarga y restaura WideWorldImporters, ejecuta los scripts SQL **en orden**, hace la carga inicial, entrena el modelo, genera predicciones y evalúa alertas. Abra **http://localhost:5173** (API y documentación OpenAPI en http://localhost:8000/docs).
 
-### Paso a paso manual
+Este script crea el entorno de Python, instala el frontend, descarga y restaura WideWorldImporters, ejecuta los scripts SQL en orden, hace la carga inicial, entrena el modelo y genera las primeras predicciones y alertas.
+
+Si se prefiere hacerlo a mano:
+
 ```powershell
-py -3.14 -m venv .venv ; .\.venv\Scripts\pip install -r requirements.txt
+py -3.14 -m venv .venv
+.\.venv\Scripts\pip install -r requirements.txt
+
 sqlcmd -S .\SQLEXPRESS -E -C -I -i database\00_create_databases.sql
 sqlcmd -S .\SQLEXPRESS -E -C -I -i database\staging\01_staging_schema.sql
 sqlcmd -S .\SQLEXPRESS -E -C -I -i database\data-warehouse\02_dw_schema.sql
 sqlcmd -S .\SQLEXPRESS -E -C -I -i database\data-warehouse\03_dw_load_procs.sql
-.\.venv\Scripts\python -m etl.pipeline --mode initial      # carga inicial
-.\.venv\Scripts\python -m machine_learning.train           # entrena y registra el modelo
-.\.venv\Scripts\python -m machine_learning.predict         # predicción batch
-.\.venv\Scripts\python -m notifications.alerts             # evalúa alertas
-.\.venv\Scripts\python -m uvicorn backend.app.main:app --port 8000
-cd frontend ; npm install ; npm run dev
+
+.\.venv\Scripts\python -m etl.pipeline --mode initial
+.\.venv\Scripts\python -m machine_learning.train
+.\.venv\Scripts\python -m machine_learning.predict
+.\.venv\Scripts\python -m notifications.alerts
 ```
 
-## Operación diaria
-| Tarea | Comando |
+El `-I` en `sqlcmd` es necesario; sin él falla la creación de algunos índices.
+
+## Cómo levantarlo
+
+```powershell
+powershell -ExecutionPolicy Bypass -File deployment\start.ps1
+```
+
+Abre tres ventanas: el backend (puerto 8000), el frontend (http://localhost:5173) y `keep_warm`, que explico más abajo. La documentación de la API queda en http://localhost:8000/docs.
+
+## Comandos útiles
+
+| Para qué | Comando |
 |---|---|
-| Carga incremental (+ predicción + alertas) | `python -m etl.pipeline` |
-| Programar cada 15 min | `deployment\programar_pipeline.ps1` |
-| Simular operaciones nuevas (marcadas SIMULADO) | `python -m etl.simulate_source_changes --days 7 [--territory Southeast --factor 0.4] [--dirty] [--scd2]` |
-| Falla controlada (prueba de recuperación) | `python -m etl.pipeline --fail-at load_facts` |
-| Alerta de prueba | `python -m notifications.alerts --test` |
-| Reintentar notificaciones | `python -m notifications.alerts --retry` |
-| Pruebas automatizadas | `python -m pytest -v tests` |
-| Regenerar evidencias | `python -m documentation.generar_evidencias` |
-| Batería de 12 preguntas del asistente (proveedor configurado) | `python -m generative_ai.eval_assistant` |
-| Reiniciar ambiente | `deployment\reset_environment.ps1` |
+| Correr una carga incremental (incluye predicción y alertas) | `python -m etl.pipeline` |
+| Programar la carga cada 15 minutos | `deployment\programar_pipeline.ps1` |
+| Simular ventas nuevas para probar el incremental | `python -m etl.simulate_source_changes --days 7` |
+| Provocar una falla y probar la recuperación | `python -m etl.pipeline --fail-at load_facts` |
+| Disparar una alerta de prueba | `python -m notifications.alerts --test` |
+| Correr las pruebas | `python -m pytest -v tests` |
+| Evaluar el asistente con 12 preguntas | `python -m generative_ai.eval_assistant` |
+| Volver al estado inicial | `deployment\reset_environment.ps1` |
+
+Los datos que crea el simulador quedan marcados como `SIMULADO` para no confundirlos con los reales.
 
 ## Seguridad
-- Secretos solo en `.env` (no versionado). `.env.example` no contiene credenciales.
-- Cuentas de mínimo privilegio: `deployment\habilitar_sql_auth.ps1 -EtlPassword ... -ApiPassword ...` (como **administrador**) y luego `SQL_AUTH=sql` en `.env`.
-- El navegador nunca se conecta a SQL Server; toda consulta es parametrizada; la IA solo usa herramientas de lista blanca.
 
-## Docker (opcional)
+- Las contraseñas y claves van en el `.env`, que no se sube al repositorio. El `.env.example` sirve como plantilla.
+- El navegador nunca se conecta directo a SQL Server; todo pasa por la API y las consultas usan parámetros.
+- El asistente no puede escribir SQL. Solo puede elegir entre siete consultas ya definidas y el servidor valida los parámetros antes de ejecutarlas.
+- Dejé preparadas dos cuentas de base de datos con permisos mínimos (`etl_user` y `api_user`). Para activarlas hay que correr `deployment\habilitar_sql_auth.ps1` como administrador y poner `SQL_AUTH=sql` en el `.env`. En mi equipo no las activé porque SQL Server estaba solo con autenticación de Windows.
+
+## Publicación en internet
+
+El frontend está en Vercel con mi dominio (https://examen.jsanchez.site). El backend no lo pude subir a Vercel porque necesita el SQL Server y el Ollama que corren en mi computadora, así que lo expongo con un túnel de ngrok:
+
+```
+navegador -> examen.jsanchez.site (Vercel, frontend)
+          -> túnel ngrok -> mi PC (FastAPI -> SQL Server y Ollama)
+```
+
+Por eso la página solo muestra datos mientras mi PC está encendida con el backend y el túnel abiertos. Para levantar el túnel:
+
+```powershell
+ngrok http --url=bannister-crave-malformed.ngrok-free.dev 8000
+```
+
+Para configurarlo desde cero:
+
+1. En Vercel, importar el repositorio y elegir `frontend` como carpeta raíz.
+2. Agregar la variable `VITE_API_URL` con la dirección del túnel de ngrok.
+3. En el `.env` del backend, agregar el dominio público a `CORS_ORIGINS`. Si no se hace, el navegador bloquea las peticiones.
+
+## Sobre la velocidad
+
+Mi computadora tiene 8 GB de RAM y suele quedarse con menos de 1 GB libre. Después de unos minutos sin uso, Windows saca de la memoria a SQL Server y al modelo de IA, y la siguiente consulta puede tardar más de un minuto. Una vez cargado, todo responde en menos de medio segundo.
+
+Para evitarlo hice `deployment/keep_warm.py`, que cada dos minutos repite las consultas principales del dashboard y le hace una petición mínima a Ollama. `start.ps1` lo abre automáticamente; hay que dejar esa ventana abierta.
+
+## Docker
+
+En `deployment/docker-compose.yml` está la configuración para levantar todo con contenedores:
+
 ```powershell
 docker compose -f deployment/docker-compose.yml --env-file .env up -d --build sqlserver
 docker compose -f deployment/docker-compose.yml --env-file .env run --rm init
 docker compose -f deployment/docker-compose.yml --env-file .env run --rm etl
-docker compose -f deployment/docker-compose.yml --env-file .env up -d api frontend   # http://localhost:8080
+docker compose -f deployment/docker-compose.yml --env-file .env up -d api frontend
 ```
-Requiere `MSSQL_SA_PASSWORD`, `ETL_DB_PASSWORD` y `API_DB_PASSWORD` en `.env`. *Nota: los archivos Compose están preparados pero **no se ejecutaron completos**: Docker Desktop se instaló al final del proyecto y el equipo (7,7 GB de RAM) no tenía memoria suficiente para un segundo SQL Server en contenedor.*
 
-## Despliegue público (Vercel + ngrok)
-Demo en línea: **https://examen.jsanchez.site** (también `https://examen1-te-6gdu.vercel.app`).
-
-```
-Navegador ──► examen.jsanchez.site (Vercel: React compilado, estático)
-    └── /api y /ws ──► https://bannister-crave-malformed.ngrok-free.dev (túnel ngrok)
-                          └──► PC de desarrollo: FastAPI :8000 → SQL Server Express + Ollama
-```
-- **Solo el frontend** está en Vercel. El backend no puede ir a Vercel: depende de SQL Server Express y Ollama locales, de respuestas de hasta 60 s (asistente) y de WebSocket.
-- **El sitio solo muestra datos mientras la PC de desarrollo está encendida** con el backend y el túnel abiertos.
-
-**Configuración (una vez)**
-1. Vercel → importar el repositorio → *Root Directory* `frontend` (preset Vite, fijado por `frontend/vercel.json`).
-2. Variable de entorno en Vercel: `VITE_API_URL=https://<dominio-ngrok>`. Vacía en local (Vite redirige `/api` y `/ws`).
-3. Dominio propio: proyecto → *Settings → Domains* → `examen.jsanchez.site` (DNS administrado por Vercel).
-4. Backend (`.env`): agregar los orígenes públicos a `CORS_ORIGINS` (p. ej. `https://examen.jsanchez.site`). Sin esto el navegador bloquea las llamadas.
-5. ngrok: `ngrok config add-authtoken <token>` (el token no se versiona) y reservar el dominio gratuito en el dashboard.
-
-**Cada vez que se quiera publicar**
-```powershell
-powershell -ExecutionPolicy Bypass -File deployment\start.ps1      # backend :8000, frontend local y keep_warm
-ngrok http --url=bannister-crave-malformed.ngrok-free.dev 8000   # deje la ventana abierta
-```
-Comprobación: `https://<dominio-ngrok>/api/health` → `{"status":"ok","database":"ok"}`. El frontend envía la cabecera `ngrok-skip-browser-warning` para evitar la página de aviso de ngrok gratuito.
-
-**Velocidad:** con poca RAM libre, Windows saca de memoria las páginas de SQL Server y del modelo de Ollama tras unos minutos sin uso; medido: `/api/kpis` tardó 83 s en frío y 0,3-0,5 s en caliente (el túnel solo añade 0,1-0,3 s). `start.ps1` abre también `python -m deployment.keep_warm`, que cada 2 min repite (vía la API local, solo lectura) las consultas iniciales de cada pestaña y un ping mínimo a Ollama con el mismo `num_ctx`; no cierre esa ventana. Cerrar Docker Desktop (`wsl --shutdown`) y pestañas del navegador libera más RAM. No acelera preguntas al asistente con filtros nuevos ni el tiempo de generación del modelo (≈ 6-60 s en CPU).
-
-**Riesgos:** la PC queda expuesta a internet a través de la API (con JWT, roles y límite de solicitudes al asistente). Use contraseñas fuertes en `APP_USERS` y cierre el túnel cuando no lo necesite.
-
+Necesita `MSSQL_SA_PASSWORD`, `ETL_DB_PASSWORD` y `API_DB_PASSWORD` en el `.env`. No lo llegué a probar completo porque mi equipo no tiene memoria suficiente para correr un segundo SQL Server dentro de Docker.
 
 ## Documentación
-| # | Documento |
-|---|---|
-| 1 | [Alcance, preguntas analíticas, requerimientos, ERD fuente](documentation/01_alcance_requerimientos.md) |
-| 2 | [Arquitectura y decisiones técnicas](documentation/02_arquitectura.md) |
-| 3 | [Modelo dimensional, grano, medidas, SCD](documentation/03_modelo_dimensional.md) |
-| 4 | [ETL, staging, reglas de calidad, incremental, auditoría](documentation/04_etl_calidad.md) |
-| 5 | [KPIs, dashboard y contrato de la API](documentation/05_bi_kpis_api.md) |
-| 6 | [Machine Learning](documentation/06_machine_learning.md) |
-| 7 | [IA generativa](documentation/07_generative_ai.md) |
-| 8 | [Alertas y automatización](documentation/08_alertas_automatizacion.md) |
-| 9 | [Seguridad, monitoreo y recuperación](documentation/09_seguridad_operacion.md) |
-| 10 | [Plan y resultados de pruebas](documentation/10_plan_pruebas.md) |
-| 11 | [Manual de usuario](documentation/11_manual_usuario.md) |
-| — | [Evidencias generadas](documentation/evidencias/) (perfil, diccionarios, cargas, KPIs, ML, pytest) |
 
-## Solución de problemas
-| Síntoma | Causa / solución |
-|---|---|
-| `CREATE INDEX failed … QUOTED_IDENTIFIER` | Ejecute `sqlcmd` con `-I` |
-| `Data source name not found` | Instale *ODBC Driver 18 for SQL Server* o cambie `ODBC_DRIVER` en `.env` |
-| Asistente responde 503 “No se pudo conectar con Ollama” | Inicie Ollama (aplicación o `ollama serve`) y verifique `OLLAMA_BASE_URL` |
-| Asistente responde 503 “ollama pull …” | Descargue el modelo: `ollama pull qwen2.5:1.5b` |
-| Asistente responde 503 con proveedor anthropic | Falta `ANTHROPIC_API_KEY` en `.env`; reinicie el backend |
-| Asistente muy lento | Normal en CPU con modelos locales; reduzca `OLLAMA_NUM_CTX` o use preguntas más concretas |
-| El dashboard muestra 401 | Token expirado: vuelva a iniciar sesión |
+1. [Alcance y requerimientos](documentation/01_alcance_requerimientos.md)
+2. [Arquitectura y decisiones técnicas](documentation/02_arquitectura.md)
+3. [Modelo dimensional](documentation/03_modelo_dimensional.md)
+4. [ETL y calidad de datos](documentation/04_etl_calidad.md)
+5. [KPIs, dashboard y API](documentation/05_bi_kpis_api.md)
+6. [Machine Learning](documentation/06_machine_learning.md)
+7. [IA generativa](documentation/07_generative_ai.md)
+8. [Alertas y automatización](documentation/08_alertas_automatizacion.md)
+9. [Seguridad y operación](documentation/09_seguridad_operacion.md)
+10. [Plan de pruebas](documentation/10_plan_pruebas.md)
+11. [Manual de usuario](documentation/11_manual_usuario.md)
+
+En [documentation/evidencias](documentation/evidencias/) están los resultados de las cargas, la validación de los KPIs, las pruebas del asistente y el resultado de pytest.
+
+## Problemas comunes
+
+- **Error de `QUOTED_IDENTIFIER` al crear índices:** falta el `-I` en `sqlcmd`.
+- **`Data source name not found`:** falta instalar ODBC Driver 18 o cambiar `ODBC_DRIVER` en el `.env`.
+- **El asistente dice que no se puede conectar con Ollama:** hay que abrir la aplicación de Ollama.
+- **El asistente pide hacer `ollama pull`:** falta descargar el modelo con `ollama pull qwen2.5:1.5b`.
+- **El dashboard devuelve 401:** la sesión expiró, hay que volver a iniciar sesión.
+- **`127.0.0.1:5173` no abre:** usar `localhost:5173`.
