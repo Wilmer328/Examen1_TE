@@ -1,6 +1,12 @@
 // Cliente HTTP: todas las llamadas pasan por el backend con token JWT.
 const TOKEN_KEY = "wwi_token";
 
+// Vacío en local (Vite redirige /api y /ws). En producción (Vercel) apunta al backend público, p. ej. el túnel ngrok.
+export const API_BASE = (import.meta.env.VITE_API_URL || "").replace(/\/+$/, "");
+export const WS_BASE = API_BASE
+  ? API_BASE.replace(/^http/, "ws")
+  : `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}`;
+
 export const auth = {
   get token() {
     try { return sessionStorage.getItem(TOKEN_KEY); } catch { return null; }
@@ -25,11 +31,12 @@ export async function api(path, { method = "GET", params, body, form } = {}) {
     ? "?" + new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== "")).toString()
     : "";
   const headers = {};
+  if (API_BASE) headers["ngrok-skip-browser-warning"] = "1"; // evita la página de aviso del túnel ngrok gratuito
   if (auth.token) headers.Authorization = `Bearer ${auth.token}`;
   let payload;
   if (form) { payload = new URLSearchParams(form); }
   else if (body !== undefined) { headers["Content-Type"] = "application/json"; payload = JSON.stringify(body); }
-  const res = await fetch(`/api${path}${qs}`, { method, headers, body: payload });
+  const res = await fetch(`${API_BASE}/api${path}${qs}`, { method, headers, body: payload });
   if (res.status === 401 && !path.startsWith("/auth")) {
     auth.clear();
     window.dispatchEvent(new Event("wwi-logout"));

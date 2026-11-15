@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, auth } from "./api.js";
+import { api, auth, WS_BASE } from "./api.js";
 import { useAsync } from "./components.jsx";
 import Alerts from "./pages/Alerts.jsx";
 import Assistant from "./pages/Assistant.jsx";
@@ -50,8 +50,7 @@ function Shell({ user, onLogout }) {
   useEffect(() => {
     let ws; let closed = false;
     const connect = () => {
-      const proto = location.protocol === "https:" ? "wss" : "ws";
-      ws = new WebSocket(`${proto}://${location.host}/ws/alerts?token=${encodeURIComponent(auth.token)}`);
+      ws = new WebSocket(`${WS_BASE}/ws/alerts?token=${encodeURIComponent(auth.token)}`);
       ws.onmessage = (ev) => {
         const a = JSON.parse(ev.data);
         setToasts((t) => [...t, a].slice(-4));
