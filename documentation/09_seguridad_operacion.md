@@ -7,7 +7,8 @@
 | Mínimo privilegio | `database/security/04_security.sql`: `etl_user` (lee fuente; escribe staging/DW; sin DDL) y `api_user` (solo lectura del DW + escritura acotada en alertas/predicciones/log IA; `DENY` sobre `dw`). Se activan con `deployment/habilitar_sql_auth.ps1` (requiere administrador) y `SQL_AUTH=sql` |
 | Inyección SQL | Todo valor externo va como parámetro `?`; nombres de columnas solo desde listas blancas; el LLM no genera SQL |
 | Endpoints protegidos | JWT HS256 con expiración; rol `admin` para ejecutar pipeline, predicción, evaluación y alerta de prueba; WebSocket exige token |
-| Frontend nunca habla con SQL Server | El navegador llama a `/api` (proxy Vite/nginx) |
+| Frontend nunca habla con SQL Server | El navegador llama a `/api` (proxy Vite/nginx en local; en la demo pública, a la URL de `VITE_API_URL`) |
+| Exposición pública (Vercel + ngrok) | Solo se expone la API (puerto 8000) por HTTPS; SQL Server y Ollama no salen de la PC. CORS limitado a los orígenes de `CORS_ORIGINS` (verificado: un origen no autorizado recibe 400). El authtoken de ngrok vive en el perfil local de ngrok, fuera del repositorio. **Riesgo residual:** cualquiera con el enlace puede intentar iniciar sesión; no hay bloqueo por intentos fallidos en `/api/auth/login` (solo el asistente tiene límite por minuto) |
 | Datos de muestra | WWI es un dataset ficticio de Microsoft; no se extraen correos, teléfonos ni fotos |
 | Información enviada a IA externa | Solo agregados (montos, conteos, nombres de categorías/territorios/empresas ficticias) y la pregunta del usuario. Documentado en `07_generative_ai.md` |
 

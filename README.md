@@ -1,6 +1,6 @@
 # Plataforma Integral de Ingeniería de Datos y Analítica Inteligente — Wide World Importers
 
-Solución de extremo a extremo: **WideWorldImporters (OLTP) → staging (raw / clean / quarantine / ready) → Data Warehouse en estrella → API + dashboard web → pronóstico ML → asistente con IA generativa (Claude) → alertas automáticas**, con auditoría, calidad, reconciliación y monitoreo.
+Solución de extremo a extremo: **WideWorldImporters (OLTP) → staging (raw / clean / quarantine / ready) → Data Warehouse en estrella → API + dashboard web → pronóstico ML → asistente con IA generativa (Ollama local o Claude) → alertas automáticas**, con auditoría, calidad, reconciliación y monitoreo.
 
 | Capa | Tecnología | Carpeta |
 |---|---|---|
@@ -13,7 +13,7 @@ Solución de extremo a extremo: **WideWorldImporters (OLTP) → staging (raw / c
 | IA generativa | **Ollama local** (`qwen2.5:1.5b`, predeterminado) o Claude (`claude-opus-5-5`) con 7 herramientas analíticas limitadas | `generative_ai/` |
 | Alertas | Reglas + ML + explicación IA; web (WebSocket) y correo | `notifications/` |
 | Pruebas | pytest (47 pruebas, incluye integración con Ollama) | `tests/` |
-| Despliegue | PowerShell; Docker Compose opcional | `deployment/` |
+| Despliegue | PowerShell; Docker Compose opcional; demo pública: frontend en **Vercel** + backend local por túnel **ngrok** | `deployment/`, `frontend/vercel.json` |
 
 ## Requisitos
 - Windows 10/11, **SQL Server Express** (instancia `.\SQLEXPRESS`) con `sqlcmd` y **ODBC Driver 18**
@@ -80,7 +80,35 @@ docker compose -f deployment/docker-compose.yml --env-file .env run --rm init
 docker compose -f deployment/docker-compose.yml --env-file .env run --rm etl
 docker compose -f deployment/docker-compose.yml --env-file .env up -d api frontend   # http://localhost:8080
 ```
-Requiere `MSSQL_SA_PASSWORD`, `ETL_DB_PASSWORD` y `API_DB_PASSWORD` en `.env`. *Nota: los archivos Compose están preparados pero no se probaron en el equipo de desarrollo (Docker no estaba instalado).*
+Requiere `MSSQL_SA_PASSWORD`, `ETL_DB_PASSWORD` y `API_DB_PASSWORD` en `.env`. *Nota: los archivos Compose están preparados pero **no se ejecutaron completos**: Docker Desktop se instaló al final del proyecto y el equipo (7,7 GB de RAM) no tenía memoria suficiente para un segundo SQL Server en contenedor.*
+
+## Despliegue público (Vercel + ngrok)
+Demo en línea: **https://examen.jsanchez.site** (también `https://examen1-te-6gdu.vercel.app`).
+
+```
+Navegador ──► examen.jsanchez.site (Vercel: React compilado, estático)
+    └── /api y /ws ──► https://bannister-crave-malformed.ngrok-free.dev (túnel ngrok)
+                          └──► PC de desarrollo: FastAPI :8000 → SQL Server Express + Ollama
+```
+- **Solo el frontend** está en Vercel. El backend no puede ir a Vercel: depende de SQL Server Express y Ollama locales, de respuestas de hasta 60 s (asistente) y de WebSocket.
+- **El sitio solo muestra datos mientras la PC de desarrollo está encendida** con el backend y el túnel abiertos.
+
+**Configuración (una vez)**
+1. Vercel → importar el repositorio → *Root Directory* `frontend` (preset Vite, fijado por `frontend/vercel.json`).
+2. Variable de entorno en Vercel: `VITE_API_URL=https://<dominio-ngrok>`. Vacía en local (Vite redirige `/api` y `/ws`).
+3. Dominio propio: proyecto → *Settings → Domains* → `examen.jsanchez.site` (DNS administrado por Vercel).
+4. Backend (`.env`): agregar los orígenes públicos a `CORS_ORIGINS` (p. ej. `https://examen.jsanchez.site`). Sin esto el navegador bloquea las llamadas.
+5. ngrok: `ngrok config add-authtoken <token>` (el token no se versiona) y reservar el dominio gratuito en el dashboard.
+
+**Cada vez que se quiera publicar**
+```powershell
+powershell -ExecutionPolicy Bypass -File deployment\start.ps1      # backend :8000 (+ frontend local)
+ngrok http --url=bannister-crave-malformed.ngrok-free.dev 8000   # deje la ventana abierta
+```
+Comprobación: `https://<dominio-ngrok>/api/health` → `{"status":"ok","database":"ok"}`. El frontend envía la cabecera `ngrok-skip-browser-warning` para evitar la página de aviso de ngrok gratuito.
+
+**Riesgos:** la PC queda expuesta a internet a través de la API (con JWT, roles y límite de solicitudes al asistente). Use contraseñas fuertes en `APP_USERS` y cierre el túnel cuando no lo necesite.
+
 
 ## Documentación
 | # | Documento |

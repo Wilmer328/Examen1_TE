@@ -57,7 +57,7 @@ flowchart LR
 | ML | scikit-learn (Ridge / HistGradientBoosting) | Suficiente para 1 602 observaciones; interpretable | XGBoost, Prophet |
 | IA generativa | **Ollama local** con `qwen2.5:1.5b` (predeterminado, `LLM_PROVIDER=ollama`); **Claude** (`claude-opus-5-5`) como alternativa | Ollama: sin costo, ningún dato sale del equipo y el modelo de 1,5B (~1 GB, contexto limitado a 8 192 tokens) cabe en un equipo de 7,7 GB de RAM. Claude: mejor calidad, pago por uso. En ambos el modelo solo pide herramientas de una lista blanca; nunca escribe SQL | OpenAI (pago y datos fuera del equipo); modelos locales de 7B+ (no caben con holgura en 7,7 GB) |
 | Notificaciones | Web (tabla + WebSocket) y correo SMTP; sin SMTP → archivo `.eml` (entrega simulada) | Demostrable sin credenciales de correo | RabbitMQ (innecesario para el volumen) |
-| Despliegue | Local con scripts PowerShell; **Docker Compose** opcional (`deployment/docker-compose.yml`) | Docker Desktop no estaba instalado; requiere privilegios de administrador | — |
+| Despliegue | Local con scripts PowerShell; **Docker Compose** opcional (`deployment/docker-compose.yml`, no ejecutado completo); **demo pública**: frontend estático en **Vercel** (`examen.jsanchez.site`) y backend local expuesto con **ngrok** | Vercel publica gratis el React compilado desde GitHub en cada push. El backend se queda en la PC porque depende de SQL Server Express y Ollama locales, usa WebSocket y respuestas de hasta 60 s (no aptas para funciones serverless). ngrok gratuito da un dominio fijo y HTTPS | Backend en Vercel Functions (sin acceso a SQL Server/Ollama, tiempos límite); Azure SQL + App Service (costo y migración de datos fuera del plazo) |
 
 ## Decisiones documentadas (preguntas de la guía)
 | Pregunta | Decisión |
@@ -91,4 +91,5 @@ flowchart LR
 | SQL Server Express, Python, React, scikit-learn, ECharts | Gratis |
 | IA generativa con Ollama (predeterminado) | Gratis; consume CPU/RAM local (~1-1,5 GB mientras el modelo está cargado; se libera tras `OLLAMA_KEEP_ALIVE=5m`) |
 | API de Claude (alternativa) | Pago por uso (Opus 5.5: USD 4 / millón de tokens de entrada, USD 20 / millón de salida); del orden de centavos por pregunta |
+| Vercel (plan Hobby) y ngrok (plan gratuito, 1 dominio fijo) | Gratis; el dominio `jsanchez.site` ya estaba comprado |
 | Correo | Gratis en modo outbox; un proveedor SMTP real puede tener costo |
