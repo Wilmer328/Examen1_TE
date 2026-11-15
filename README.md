@@ -102,10 +102,12 @@ Navegador ──► examen.jsanchez.site (Vercel: React compilado, estático)
 
 **Cada vez que se quiera publicar**
 ```powershell
-powershell -ExecutionPolicy Bypass -File deployment\start.ps1      # backend :8000 (+ frontend local)
+powershell -ExecutionPolicy Bypass -File deployment\start.ps1      # backend :8000, frontend local y keep_warm
 ngrok http --url=bannister-crave-malformed.ngrok-free.dev 8000   # deje la ventana abierta
 ```
 Comprobación: `https://<dominio-ngrok>/api/health` → `{"status":"ok","database":"ok"}`. El frontend envía la cabecera `ngrok-skip-browser-warning` para evitar la página de aviso de ngrok gratuito.
+
+**Velocidad:** con poca RAM libre, Windows saca de memoria las páginas de SQL Server y del modelo de Ollama tras unos minutos sin uso; medido: `/api/kpis` tardó 83 s en frío y 0,3-0,5 s en caliente (el túnel solo añade 0,1-0,3 s). `start.ps1` abre también `python -m deployment.keep_warm`, que cada 2 min repite (vía la API local, solo lectura) las consultas iniciales de cada pestaña y un ping mínimo a Ollama con el mismo `num_ctx`; no cierre esa ventana. Cerrar Docker Desktop (`wsl --shutdown`) y pestañas del navegador libera más RAM. No acelera preguntas al asistente con filtros nuevos ni el tiempo de generación del modelo (≈ 6-60 s en CPU).
 
 **Riesgos:** la PC queda expuesta a internet a través de la API (con JWT, roles y límite de solicitudes al asistente). Use contraseñas fuertes en `APP_USERS` y cierre el túnel cuando no lo necesite.
 
