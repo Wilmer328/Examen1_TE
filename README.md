@@ -126,7 +126,6 @@ Comprobación: `https://<dominio-ngrok>/api/health` → `{"status":"ok","databas
 | 9 | [Seguridad, monitoreo y recuperación](documentation/09_seguridad_operacion.md) |
 | 10 | [Plan y resultados de pruebas](documentation/10_plan_pruebas.md) |
 | 11 | [Manual de usuario](documentation/11_manual_usuario.md) |
-| 12 | [Guion del video y demo](documentation/12_guion_video_demo.md) |
 | — | [Evidencias generadas](documentation/evidencias/) (perfil, diccionarios, cargas, KPIs, ML, pytest) |
 
 ## Solución de problemas
