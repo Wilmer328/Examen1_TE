@@ -15,7 +15,7 @@ winget install Ollama.Ollama            # o https://ollama.com/download
 ollama pull qwen2.5:1.5b                # ~1 GB
 curl http://localhost:11434/api/tags    # debe listar qwen2.5:1.5b
 ```
-Variables (`.env`): `OLLAMA_BASE_URL` (por defecto `http://localhost:11434`; en Docker `http://host.docker.internal:11434`), `OLLAMA_TOOL_MODE`, `OLLAMA_NUM_CTX`, `OLLAMA_NUM_PREDICT`, `OLLAMA_TIMEOUT`, `OLLAMA_KEEP_ALIVE`. Estado: `GET /api/assistant/status` → `{proveedor, modelo, configurado, detalle}`.
+Variables (`.env`): `OLLAMA_BASE_URL` (recomendado `http://127.0.0.1:11434`: con `localhost` Windows intenta primero IPv6 y cada llamada tarda ~2 s más; en Docker `http://host.docker.internal:11434`), `OLLAMA_TOOL_MODE`, `OLLAMA_NUM_CTX`, `OLLAMA_NUM_PREDICT`, `OLLAMA_TIMEOUT`, `OLLAMA_KEEP_ALIVE`. Estado: `GET /api/assistant/status` → `{proveedor, modelo, configurado, detalle}`.
 
 ### Límites de memoria y tiempo
 | Parámetro | Valor | Efecto |
@@ -106,4 +106,4 @@ Fallas típicas: período equivocado (“último trimestre” → año completo)
 - Latencia de 7 s a más de 4 min por pregunta en CPU.
 - La explicación de alertas con Ollama usa el mismo modelo y tiene la misma calidad limitada.
 - La pantalla del asistente muestra el proveedor y modelo activos y, si no está disponible, el detalle real enviado por `/api/assistant/status` (p. ej. “No se pudo conectar con Ollama…”).
-- La explicación de alertas con Ollama está implementada pero **no se ejecutó contra el modelo real**; la alternativa con Claude no se probó en vivo (sin API key).
+- La explicación de alertas con Ollama **se probó contra el modelo real** (`qwen2.5:1.5b`): 11–13 s por alerta y cifras correctas (p. ej., caída de 43,2 % en Far West). La explicación no menciona que la semana evaluada contiene datos simulados. La alternativa con Claude no se probó en vivo (sin API key).
